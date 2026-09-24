@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3x3 空間認知リアクション</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+            background-color: #f3f4f6;
+            touch-action: manipulation;
+        }
+        .numpad-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .cell {
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: bold;
+            border-radius: 1rem;
+            background-color: white;
+            color: #374151;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: all 0.2s ease-in-out;
+            border: 4px solid #e5e7eb;
+        }
+        /* Color states for the cells */
+        .cell.active-red {
+            background-color: #ef4444; /* Red: Target */
+            color: white;
+            border-color: #b91c1c;
+            transform: scale(1.05);
+            box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.4);
+        }
+        .cell.active-blue {
+            background-color: #3b82f6; /* Blue: Trap */
+            color: white;
+            border-color: #1d4ed8;
+            transform: scale(1.05);
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4);
+        }
+        .cell.success {
+            background-color: #22c55e; /* Green: Success */
+            color: white;
+            border-color: #15803d;
+        }
+        .cell.fail {
+            background-color: #4b5563; /* Gray: Fail */
+            color: white;
+            border-color: #1f2937;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- BGM Audio Element -->
+    <audio id="bgm" src="かけっこ競争.mp3" loop></audio>
+
+    <div class="w-full max-w-2xl bg-white rounded-3xl shadow-xl overflow-hidden p-8 text-center">
+        
+        <!-- Header / Status Bar -->
+        <div id="status-bar" class="hidden flex justify-between items-center mb-8 px-4 py-3 bg-gray-100 rounded-xl">
+            <div class="text-2xl font-bold text-gray-700">現在: <span id="score-display" class="text-blue-600 text-3xl">0</span> 点</div>
+            <div class="text-2xl font-bold text-gray-700">残り時間: <span id="time-display" class="text-red-500 text-3xl">60</span> 秒</div>
+        </div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="space-y-6">
+            <h1 class="text-4xl font-extrabold text-gray-800 tracking-tight">3x3 空間認知リアクション</h1>
+            <div class="text-left bg-blue-50 p-6 rounded-xl border border-blue-100 text-lg text-gray-700 leading-relaxed space-y-3">
+                <p><strong>【ルール説明】</strong> テンキー（1〜9）を使います。</p>
+                <ul class="list-disc list-inside ml-2">
+                    <li><span class="text-red-500 font-bold">赤く光ったら</span>、同じ数字のキーを素早く押してください。（+4点）</li>
+                    <li><span class="text-blue-500 font-bold">青く光ったら</span>、<strong>絶対に押してはいけません。</strong>（我慢できたら+4点）</li>
+                </ul>
+                <p>制限時間は60秒（全25回）。100点満点を目指しましょう！</p>
+            </div>
+            <button id="btn-start" class="mt-4 w-full py-5 bg-blue-600 hover:bg-blue-700 text-white text-3xl font-bold rounded-2xl shadow-lg transition transform hover:scale-105">
+                スタート
+            </button>
+        </div>
+
+        <!-- Game Area -->
+        <div id="game-screen" class="hidden">
+            <!-- Numpad Layout: 789, 456, 123 -->
+            <div class="numpad-grid">
+                <div class="cell" id="cell-7">7</div>
+                <div class="cell" id="cell-8">8</div>
+                <div class="cell" id="cell-9">9</div>
+                
+                <div class="cell" id="cell-4">4</div>
+                <div class="cell" id="cell-5">5</div>
+                <div class="cell" id="cell-6">6</div>
+                
+                <div class="cell" id="cell-1">1</div>
+                <div class="cell" id="cell-2">2</div>
+                <div class="cell" id="cell-3">3</div>
+            </div>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="result-screen" class="hidden space-y-8">
+            <h2 class="text-5xl font-extrabold text-gray-800">ゲーム終了！</h2>
+            <div class="bg-gray-100 p-8 rounded-2xl">
+                <p class="text-2xl text-gray-600 mb-2">あなたの得点</p>
+                <p class="text-7xl font-black text-blue-600"><span id="final-score">0</span> <span class="text-4xl text-gray-500">/ 100点</span></p>
+            </div>
+            <p id="result-message" class="text-2xl font-bold text-gray-700"></p>
+            <button id="btn-restart" class="w-full py-5 bg-green-500 hover:bg-green-600 text-white text-3xl font-bold rounded-2xl shadow-lg transition transform hover:scale-105">
+                もう一度プレイ
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // DOM Elements
+        const startScreen = document.getElementById('start-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const resultScreen = document.getElementById('result-screen');
+        const statusBar = document.getElementById('status-bar');
+        const scoreDisplay = document.getElementById('score-display');
+        const timeDisplay = document.getElementById('time-display');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const resultMessage = document.getElementById('result-message');
+        const btnStart = document.getElementById('btn-start');
+        const btnRestart = document.getElementById('btn-restart');
+        const bgm = document.getElementById('bgm');
+
+        // Game State Variables
+        let isPlaying = false;
+        let score = 0;
+        let timeLeft = 60;
+        let currentRound = 0;
+        const totalRounds = 25; // 変更: 20回から25回へ
+        
+        let activeCellNum = null;
+        let activeColor = null; // 'red' or 'blue'
+        let hasRespondedThisRound = false;
+        
+        let clockInterval;
+        let roundPhase1Timeout; // Controls the 2.5s active phase
+        let roundPhase2Timeout; // Controls the 0.5s pause phase
+
+        
+        function startGame() {
+            // Reset state
+            isPlaying = true;
+            score = 0;
+            timeLeft = 60;
+            currentRound = 0;
+            updateStatusUI();
+            
+            // Switch UI
+            startScreen.classList.add('hidden');
+            resultScreen.classList.add('hidden');
+            statusBar.classList.remove('hidden');
+            gameScreen.classList.remove('hidden');
+            
+            // Start BGM
+            bgm.currentTime = 0;
+            bgm.play().catch(e => console.log("Audio play prevented by browser:", e));
+
+            // Start Clock
+            clockInterval = setInterval(() => {
+                timeLeft--;
+                timeDisplay.textContent = timeLeft;
+                if (timeLeft <= 0) {
+                    // Safety catch, actual ending is handled by rounds
+                    clearInterval(clockInterval);
+                }
+            }, 1000);
+
+            // Start first round
+            runNextRound();
+        }
+
+        function endGame() {
+            isPlaying = false;
+            clearInterval(clockInterval);
+            clearTimeout(roundPhase1Timeout);
+            clearTimeout(roundPhase2Timeout);
+            resetAllCells();
+            
+            bgm.pause();
+
+            // Switch UI
+            gameScreen.classList.add('hidden');
+            statusBar.classList.add('hidden');
+            resultScreen.classList.remove('hidden');
+            
+            // Display Result
+            finalScoreDisplay.textContent = score;
+            
+            if (score === 100) {
+                resultMessage.textContent = "素晴らしい！パーフェクトです！";
+                resultMessage.className = "text-2xl font-bold text-red-500";
+            } else if (score >= 80) {
+                resultMessage.textContent = "大変よくできました！";
+                resultMessage.className = "text-2xl font-bold text-orange-500";
+            } else {
+                resultMessage.textContent = "その調子！毎日の脳トレが効果的です。";
+                resultMessage.className = "text-2xl font-bold text-blue-500";
+            }
+        }
+
+
+        function runNextRound() {
+            if (currentRound >= totalRounds) {
+                endGame();
+                return;
+            }
+            
+            currentRound++;
+            hasRespondedThisRound = false;
+            resetAllCells();
+
+            // Pick random cell (1-9)
+            activeCellNum = Math.floor(Math.random() * 9) + 1;
+            
+            // Pick color: 70% Red (Target), 30% Blue (Trap)
+            activeColor = Math.random() < 0.7 ? 'red' : 'blue';
+            
+            // Apply visual
+            const cellElement = document.getElementById(`cell-${activeCellNum}`);
+            cellElement.classList.add(`active-${activeColor}`);
+
+            // Set timeout for the active phase (2.0 seconds) - 表示時間を短縮
+            roundPhase1Timeout = setTimeout(() => {
+                evaluateMissedResponse();
+                
+                // Set timeout for the pause phase (0.4 seconds before next round)
+                roundPhase2Timeout = setTimeout(() => {
+                    runNextRound();
+                }, 400); // 2.0秒 + 0.4秒 = 1ラウンド2.4秒 (2.4秒 × 25回 = 60秒)
+                
+            }, 2000);
+        }
+
+        function evaluateMissedResponse() {
+            // Evaluates what happens if the user did NOT press anything during the 2.5s window
+            if (!hasRespondedThisRound) {
+                hasRespondedThisRound = true; // Lock it
+                const cellElement = document.getElementById(`cell-${activeCellNum}`);
+                
+                if (activeColor === 'blue') {
+                    // Successfully ignored the blue trap
+                    addScore(4); // 変更: 5点から4点へ
+                    cellElement.classList.remove('active-blue');
+                    cellElement.classList.add('success');
+                } else if (activeColor === 'red') {
+                    // Missed the red target
+                    cellElement.classList.remove('active-red');
+                    cellElement.classList.add('fail');
+                }
+            }
+        }
+
+
+        function handleInput(pressedNumber) {
+            if (!isPlaying || hasRespondedThisRound || activeCellNum === null) return;
+            
+            hasRespondedThisRound = true; // Prevent multiple inputs in one round
+            const cellElement = document.getElementById(`cell-${activeCellNum}`);
+
+            if (activeColor === 'red') {
+                if (pressedNumber === activeCellNum) {
+                    // Correct! Hit the matching red target
+                    addScore(4); // 変更: 5点から4点へ
+                    cellElement.classList.remove('active-red');
+                    cellElement.classList.add('success');
+                } else {
+                    // Wrong key pressed
+                    cellElement.classList.remove('active-red');
+                    cellElement.classList.add('fail');
+                    // Briefly flash the wrongly pressed cell too
+                    const wrongCell = document.getElementById(`cell-${pressedNumber}`);
+                    if (wrongCell) {
+                        wrongCell.classList.add('fail');
+                        setTimeout(() => wrongCell.classList.remove('fail'), 300);
+                    }
+                }
+            } else if (activeColor === 'blue') {
+                // Trap triggered! Pressed a key when blue was active
+                cellElement.classList.remove('active-blue');
+                cellElement.classList.add('fail');
+            }
+        }
+
+        // Listen for Keyboard Events
+        window.addEventListener('keydown', (e) => {
+            // Check if key is a number 1-9 (works for both standard numbers and Numpad)
+            if (e.key >= '1' && e.key <= '9') {
+                const pressedNumber = parseInt(e.key, 10);
+                handleInput(pressedNumber);
+            }
+        });
+
+
+        function addScore(points) {
+            score += points;
+            scoreDisplay.textContent = score;
+            // Pop animation for score
+            scoreDisplay.classList.add('scale-150', 'transition', 'transform');
+            setTimeout(() => {
+                scoreDisplay.classList.remove('scale-150');
+            }, 150);
+        }
+
+        function updateStatusUI() {
+            scoreDisplay.textContent = score;
+            timeDisplay.textContent = timeLeft;
+        }
+
+        function resetAllCells() {
+            for (let i = 1; i <= 9; i++) {
+                const cell = document.getElementById(`cell-${i}`);
+                cell.className = 'cell'; // Resets to base class only
+            }
+        }
+
+        // Button Event Listeners
+        btnStart.addEventListener('click', startGame);
+        btnRestart.addEventListener('click', startGame);
+
+    </script>
+</body>
+</html>
